@@ -1,82 +1,89 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Event, Expense } from '../types';
 
-const EVENTS_KEY = 'savings_simulator:events';
-const EXPENSES_KEY = 'savings_simulator:expenses';
+const EVENTS_KEY = '@savings_app_events';
+const EXPENSES_KEY = '@savings_app_expenses';
 
 // Gestion des événements
-export const saveEvents = (events: Event[]): void => {
+export const loadEvents = async (): Promise<Event[]> => {
   try {
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
-  } catch (error) {
-    console.error('Erreur lors de la sauvegarde des événements:', error);
-  }
-};
-
-export const loadEvents = (): Event[] => {
-  try {
-    const eventsJson = localStorage.getItem(EVENTS_KEY);
-    return eventsJson ? JSON.parse(eventsJson) : [];
+    const eventsData = await AsyncStorage.getItem(EVENTS_KEY);
+    return eventsData ? JSON.parse(eventsData) : [];
   } catch (error) {
     console.error('Erreur lors du chargement des événements:', error);
     return [];
   }
 };
 
-export const addEvent = (event: Event): void => {
+export const saveEvents = async (events: Event[]): Promise<void> => {
   try {
-    const events = loadEvents();
-    events.push(event);
-    saveEvents(events);
+    await AsyncStorage.setItem(EVENTS_KEY, JSON.stringify(events));
   } catch (error) {
-    console.error('Erreur lors de l\'ajout de l\'événement:', error);
+    console.error('Erreur lors de la sauvegarde des événements:', error);
+    throw error;
   }
 };
 
-export const deleteEvent = (eventId: string): void => {
+export const addEvent = async (event: Event): Promise<void> => {
   try {
-    const events = loadEvents();
-    const filteredEvents = events.filter(event => event.id !== eventId);
-    saveEvents(filteredEvents);
+    const events = await loadEvents();
+    const updatedEvents = [...events, event];
+    await saveEvents(updatedEvents);
+  } catch (error) {
+    console.error('Erreur lors de l\'ajout de l\'événement:', error);
+    throw error;
+  }
+};
+
+export const deleteEvent = async (eventId: string): Promise<void> => {
+  try {
+    const events = await loadEvents();
+    const updatedEvents = events.filter(event => event.id !== eventId);
+    await saveEvents(updatedEvents);
   } catch (error) {
     console.error('Erreur lors de la suppression de l\'événement:', error);
+    throw error;
   }
 };
 
 // Gestion des dépenses
-export const saveExpenses = (expenses: Expense[]): void => {
+export const loadExpenses = async (): Promise<Expense[]> => {
   try {
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-  } catch (error) {
-    console.error('Erreur lors de la sauvegarde des dépenses:', error);
-  }
-};
-
-export const loadExpenses = (): Expense[] => {
-  try {
-    const expensesJson = localStorage.getItem(EXPENSES_KEY);
-    return expensesJson ? JSON.parse(expensesJson) : [];
+    const expensesData = await AsyncStorage.getItem(EXPENSES_KEY);
+    return expensesData ? JSON.parse(expensesData) : [];
   } catch (error) {
     console.error('Erreur lors du chargement des dépenses:', error);
     return [];
   }
 };
 
-export const addExpense = (expense: Expense): void => {
+export const saveExpenses = async (expenses: Expense[]): Promise<void> => {
   try {
-    const expenses = loadExpenses();
-    expenses.push(expense);
-    saveExpenses(expenses);
+    await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
   } catch (error) {
-    console.error('Erreur lors de l\'ajout de la dépense:', error);
+    console.error('Erreur lors de la sauvegarde des dépenses:', error);
+    throw error;
   }
 };
 
-export const deleteExpense = (expenseId: string): void => {
+export const addExpense = async (expense: Expense): Promise<void> => {
   try {
-    const expenses = loadExpenses();
-    const filteredExpenses = expenses.filter(expense => expense.id !== expenseId);
-    saveExpenses(filteredExpenses);
+    const expenses = await loadExpenses();
+    const updatedExpenses = [...expenses, expense];
+    await saveExpenses(updatedExpenses);
+  } catch (error) {
+    console.error('Erreur lors de l\'ajout de la dépense:', error);
+    throw error;
+  }
+};
+
+export const deleteExpense = async (expenseId: string): Promise<void> => {
+  try {
+    const expenses = await loadExpenses();
+    const updatedExpenses = expenses.filter(expense => expense.id !== expenseId);
+    await saveExpenses(updatedExpenses);
   } catch (error) {
     console.error('Erreur lors de la suppression de la dépense:', error);
+    throw error;
   }
 }; 
