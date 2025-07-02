@@ -1,127 +1,84 @@
-# 💰 Simulateur d'Économies - React Native
+# 🚀 Doodle Jump - Projet de Semaine
 
-Une application mobile React Native avec Expo pour simuler vos économies potentielles jusqu'à un événement futur.
+Un jeu de plateforme addictif inspiré de Doodle Jump, développé en React Native avec Expo.
 
-## 🎯 Fonctionnalités
+## 🎮 Fonctionnalités
 
-### Onglet "Événements"
-- ✅ Ajouter des événements futurs (nom + date)
-- ✅ Formulaire multi-étapes avec animations
-- ✅ Validation en temps réel
-- ✅ Suggestions intelligentes
-- ✅ Voir le nombre de jours restants
-- ✅ Supprimer des événements
-- ✅ Gestion des événements passés
+- **Physique réaliste** : Gravité et rebonds fluides
+- **Plateformes variées** : Normales, mobiles, trampolines
+- **Système de score** : Basé sur la hauteur atteinte
+- **Vies multiples** : 3 vies par partie
+- **Interface moderne** : Design épuré avec animations
+- **Contrôles tactiles** : Boutons gauche/droite
 
-### Onglet "Dépenses Simulées"
-- ✅ Créer des dépenses régulières (montant + fréquence)
-- ✅ Lier une dépense à un événement
-- ✅ Calculer les économies potentielles
-- ✅ Visualiser le montant total économisé
-- ✅ Interface moderne avec animations
+## 🛠️ Technologies utilisées
 
-## 🏗️ Architecture
+- **React Native** - Framework mobile
+- **Expo** - Outils de développement
+- **TypeScript** - Typage statique
+- **React Native Reanimated** - Animations fluides
+- **React Native Animatable** - Animations d'interface
 
-```
-src/
-├── types/           # Définitions TypeScript
-├── utils/           # Utilitaires (stockage, calculs)
-└── screens/         # Écrans de l'application
-```
+## 🚀 Installation et lancement
 
-### Technologies utilisées
-- **React Native** avec Expo
-- **TypeScript** pour la sécurité des types
-- **@react-navigation** pour la navigation par onglets
-- **AsyncStorage** pour la persistance locale
-- **@expo/vector-icons** pour les icônes
-- **react-native-modal** pour les modales
-- **react-native-animatable** pour les animations
-- **react-native-linear-gradient** pour les dégradés
+1. **Cloner le projet**
+   ```bash
+   git clone [url-du-repo]
+   cd doodle-jump-game
+   ```
 
-## 🚀 Installation & Démarrage
-
-1. **Installation des dépendances :**
+2. **Installer les dépendances**
    ```bash
    npm install
    ```
 
-2. **Démarrage de l'application :**
+3. **Lancer l'application**
    ```bash
    npm start
    ```
 
-3. **Lancement sur un appareil :**
-   - **iOS :** `npm run ios`
-   - **Android :** `npm run android`
-   - **Web :** `npm run web`
+4. **Tester sur mobile**
+   - Scannez le QR code avec l'app Expo Go
+   - Ou lancez sur simulateur : `npm run ios` ou `npm run android`
 
-## 📱 Utilisation
+## 🎯 Comment jouer
 
-1. **Créer un événement :**
-   - Allez dans l'onglet "Événements"
-   - Cliquez sur "Ajouter"
-   - Suivez les étapes du formulaire animé
-   - Choisissez une date future
+- **Objectif** : Atteindre la plus haute hauteur possible
+- **Contrôles** : 
+  - Bouton gauche : Déplacer à gauche
+  - Bouton droit : Déplacer à droite
+- **Mécaniques** :
+  - Sautez sur les plateformes pour rebondir
+  - Les trampolines (vertes) donnent un boost
+  - Les plateformes mobiles (orange) se déplacent
+  - Évitez de tomber !
 
-2. **Simuler une dépense :**
-   - Allez dans l'onglet "Dépenses Simulées"
-   - Cliquez sur "Ajouter"
-   - Remplissez la description, le montant et la fréquence
-   - Sélectionnez l'événement cible
+## 📱 Compatibilité
 
-3. **Voir vos économies :**
-   - Les économies potentielles s'affichent automatiquement
-   - Le calcul se met à jour en temps réel selon les jours restants
+- iOS 12.0+
+- Android 5.0+
+- Expo SDK 53
 
-## 💾 Stockage des Données
+## 🎨 Design
 
-L'application utilise `AsyncStorage` pour sauvegarder localement :
-- Les événements créés
-- Les dépenses simulées
-- Aucun serveur requis
+- Interface moderne avec dégradés
+- Animations fluides et réactives
+- Feedback visuel pour les actions
+- Design responsive
 
-## 🎨 Interface
+## 🔧 Structure du projet
 
-- Design moderne avec dégradés et animations
-- Navigation par onglets intuitive
-- Modales avec animations fluides
-- Validation en temps réel
-- Codes couleur pour différencier les états
-- Responsive sur toutes les tailles d'écran
-
-## 🔮 Améliorations Futures
-
-- [ ] Notifications de rappel
-- [ ] Graphiques des économies
-- [ ] Export des données
-- [ ] Thème sombre
-- [ ] Catégories de dépenses
-- [ ] Objectifs d'économies
-- [ ] Synchronisation cloud
-- [ ] Widgets d'accueil
-
-## 📦 Dépendances principales
-
-```json
-{
-  "@react-navigation/native": "^6.x",
-  "@react-navigation/bottom-tabs": "^6.x",
-  "@react-native-async-storage/async-storage": "^1.x",
-  "react-native-modal": "^13.x",
-  "react-native-animatable": "^1.x",
-  "react-native-linear-gradient": "^2.x",
-  "@expo/vector-icons": "^13.x"
-}
+```
+src/
+├── screens/
+│   └── DoodleJumpScreen.tsx  # Écran principal du jeu
+App.tsx                       # Point d'entrée de l'app
 ```
 
-## 🛠️ Développement
+## 🚀 Développement
 
-L'application est construite avec :
-- **Expo SDK 49+**
-- **React Native 0.72+**
-- **TypeScript 5.0+**
+Ce projet a été développé en une semaine dans le cadre d'un projet scolaire, démontrant les capacités de React Native pour créer des jeux mobiles performants et addictifs.
 
-## 📄 Licence
+---
 
-Ce projet est sous licence MIT. 
+**Développé avec ❤️ en React Native** 
