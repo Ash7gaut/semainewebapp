@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View, Text, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import DoodleJumpScreen from "./src/screens/DoodleJumpScreen";
+import DoodleJumpScreen from "./src/screens/DoodleJumpScreenFixed";
 
 const { width, height } = Dimensions.get("window");
 

@@ -11,19 +11,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Animatable from "react-native-animatable";
+import {
+  useInfinitePlatformsFinal as useInfinitePlatforms,
+  Platform,
+} from "../hooks/useInfinitePlatformsFinal";
 
 const { width, height } = Dimensions.get("window");
-
-interface Platform {
-  id: number;
-  x: number;
-  y: number;
-  width: number;
-  type: "normal" | "moving" | "disappearing" | "trampoline";
-  movingDirection?: number;
-  movingSpeed?: number;
-  disappearing?: boolean;
-}
 
 interface GameState {
   isPlaying: boolean;
@@ -34,13 +27,13 @@ interface GameState {
   level: number;
 }
 
-const DoodleJumpScreen = () => {
+const DoodleJumpScreenFixed = () => {
   const [gameState, setGameState] = useState<GameState>({
     isPlaying: false,
     isPaused: false,
     score: 0,
     highScore: 0,
-    lives: 3,
+    lives: 1,
     level: 1,
   });
 
@@ -53,11 +46,14 @@ const DoodleJumpScreen = () => {
     height: 50,
   });
 
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
-  const [powerUps, setPowerUps] = useState<any[]>([]);
-  const [enemies, setEnemies] = useState<any[]>([]);
-  const platformIdRef = useRef(0);
-  const lastGeneratedYRef = useRef(0);
+  // Utiliser le hook pour la gestion des plateformes infinies
+  const {
+    platforms,
+    updatePlatforms,
+    initializePlatforms,
+    reset: resetPlatforms,
+    getDebugInfo,
+  } = useInfinitePlatforms();
 
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const gravity = 0.8;
@@ -102,214 +98,115 @@ const DoodleJumpScreen = () => {
       if (newX < -prevPlayer.width) wrappedX = width;
       if (newX > width) wrappedX = -prevPlayer.width;
 
-      return {
+      const newPlayer = {
         ...prevPlayer,
         y: newY,
         x: wrappedX,
         velocityY: newVelocityY,
       };
-    });
 
-    // Update platforms and generate new ones
-    setPlatforms((prevPlatforms) => {
-      let updatedPlatforms = prevPlatforms.map((platform) => {
-        if (platform.type === "moving" && platform.movingDirection) {
-          const speed = platform.movingSpeed || 0.1;
-          const newX = platform.x + speed * platform.movingDirection;
-          let newDirection = platform.movingDirection;
+      // Mettre à jour les plateformes avec la nouvelle position du joueur
+      updatePlatforms(newY, (currentPlatforms) => {
+        // Mettre à jour les plateformes mobiles
+        const updatedPlatforms = currentPlatforms.map((platform) => {
+          if (platform.type === "moving" && platform.movingDirection) {
+            const speed = platform.movingSpeed || 0.1;
+            const newX = platform.x + speed * platform.movingDirection;
+            let newDirection = platform.movingDirection;
 
-          if (newX <= 0 || newX + platform.width >= width) {
-            newDirection = -newDirection;
+            if (newX <= 0 || newX + platform.width >= width) {
+              newDirection = -newDirection;
+            }
+
+            return {
+              ...platform,
+              x: Math.max(0, Math.min(width - platform.width, newX)),
+              movingDirection: newDirection,
+            };
           }
+          return platform;
+        });
 
-          return {
-            ...platform,
-            x: Math.max(0, Math.min(width - platform.width, newX)),
-            movingDirection: newDirection,
-          };
-        }
-        return platform;
+        // Vérifier les collisions avec les plateformes mises à jour
+        checkCollisionsWithPlatforms(updatedPlatforms, newPlayer);
+
+        return updatedPlatforms;
       });
 
-      // Définir les limites du viewport
-      const viewportTop = cameraY;
-      const viewportBottom = cameraY + height;
-      const viewportTopBuffer = viewportTop - 200; // Zone de génération en haut
-      const viewportBottomBuffer = viewportBottom + 100; // Zone de suppression en bas
+      return newPlayer;
+    });
+  };
 
-      // Supprimer les plateformes qui sortent du viewport par le bas
-      updatedPlatforms = updatedPlatforms.filter(
-        (platform) => platform.y < viewportBottomBuffer
-      );
+  const checkCollisionsWithPlatforms = (
+    currentPlatforms: any[],
+    currentPlayer: any
+  ) => {
+    setPlayer((prevPlayer) => {
+      // Vérifier les collisions avec les plateformes (en coordonnées absolues)
+      const onPlatform = currentPlatforms.some((platform) => {
+        return (
+          currentPlayer.y + currentPlayer.height >= platform.y &&
+          currentPlayer.y + currentPlayer.height <= platform.y + 20 &&
+          currentPlayer.x + currentPlayer.width > platform.x &&
+          currentPlayer.x < platform.x + platform.width &&
+          currentPlayer.velocityY >= 0
+        );
+      });
 
-      // Générer de nouvelles plateformes seulement si nécessaire
-      if (updatedPlatforms.length > 0) {
-        const highestPlatform = Math.min(...updatedPlatforms.map((p) => p.y));
-
-        // Générer des plateformes seulement si on a besoin d'en ajouter
-        if (
-          highestPlatform > viewportTopBuffer &&
-          highestPlatform < lastGeneratedYRef.current - 100
-        ) {
-          // Calculer combien de plateformes générer
-          const platformsNeeded = Math.min(
-            Math.ceil((highestPlatform - viewportTopBuffer) / 80) + 2,
-            6 // Maximum 6 plateformes à la fois
+      if (onPlatform) {
+        // Trouver la plateforme sur laquelle on atterrit
+        const platform = currentPlatforms.find((p) => {
+          return (
+            currentPlayer.y + currentPlayer.height >= p.y &&
+            currentPlayer.y + currentPlayer.height <= p.y + 20 &&
+            currentPlayer.x + currentPlayer.width > p.x &&
+            currentPlayer.x < p.x + p.width &&
+            currentPlayer.velocityY >= 0
           );
+        });
 
-          for (let i = 0; i < platformsNeeded; i++) {
-            const newPlatform = generateRandomPlatform(
-              highestPlatform - 80 - i * 80,
-              platformIdRef.current + i
-            );
-            updatedPlatforms.push(newPlatform);
-          }
-          platformIdRef.current += platformsNeeded;
-          lastGeneratedYRef.current = highestPlatform;
+        if (platform) {
+          let jumpMultiplier = 1;
+          if (platform.type === "trampoline") jumpMultiplier = 1.5;
+
+          return {
+            ...prevPlayer,
+            y: platform.y - currentPlayer.height,
+            velocityY: jumpForce * jumpMultiplier,
+          };
         }
       }
 
-      // Check collisions with updated platforms
-      checkCollisionsWithPlatforms(updatedPlatforms);
+      // Vérifier si le joueur est tombé
+      if (currentPlayer.y > height + 50) {
+        loseLife();
+        return {
+          ...prevPlayer,
+          y: height - 200,
+          velocityY: 0,
+          x: width / 2 - 25,
+        };
+      }
 
-      return updatedPlatforms;
+      return prevPlayer;
     });
+
+    // Mettre à jour le score basé sur la hauteur
+    const currentHeight = height - currentPlayer.y;
+    if (currentHeight > gameState.score) {
+      setGameState((prev) => ({
+        ...prev,
+        score: Math.floor(currentHeight / 10),
+      }));
+    }
   };
 
   const checkCollisions = () => {
-    setPlayer((prevPlayer) => {
-      // Get current platforms state
-      const currentPlatforms = platforms;
-
-      // Check platform collisions
-      const onPlatform = currentPlatforms.some((platform) => {
-        return (
-          prevPlayer.y + prevPlayer.height >= platform.y &&
-          prevPlayer.y + prevPlayer.height <= platform.y + 20 &&
-          prevPlayer.x + prevPlayer.width > platform.x &&
-          prevPlayer.x < platform.x + platform.width &&
-          prevPlayer.velocityY >= 0
-        );
-      });
-
-      if (onPlatform) {
-        // Find the platform we're on
-        const platform = currentPlatforms.find((p) => {
-          return (
-            prevPlayer.y + prevPlayer.height >= p.y &&
-            prevPlayer.y + prevPlayer.height <= p.y + 20 &&
-            prevPlayer.x + prevPlayer.width > p.x &&
-            prevPlayer.x < p.x + p.width &&
-            prevPlayer.velocityY >= 0
-          );
-        });
-
-        if (platform) {
-          let jumpMultiplier = 1;
-          if (platform.type === "trampoline") jumpMultiplier = 1.5;
-
-          return {
-            ...prevPlayer,
-            y: platform.y - prevPlayer.height,
-            velocityY: jumpForce * jumpMultiplier,
-          };
-        }
-      }
-
-      // Check if player fell off screen (more strict)
-      if (prevPlayer.y > height + 50) {
-        loseLife();
-        return {
-          ...prevPlayer,
-          y: height - 200,
-          velocityY: 0,
-          x: width / 2 - 25,
-        };
-      }
-
-      return prevPlayer;
-    });
-
-    // Update score based on height (relative to caméra)
-    const currentHeight = cameraY + height - player.y;
-    if (currentHeight > gameState.score) {
-      setGameState((prev) => ({
-        ...prev,
-        score: Math.floor(currentHeight / 10),
-      }));
-    }
-  };
-
-  const checkCollisionsWithPlatforms = (currentPlatforms: Platform[]) => {
-    setPlayer((prevPlayer) => {
-      // Check platform collisions
-      const onPlatform = currentPlatforms.some((platform) => {
-        return (
-          prevPlayer.y + prevPlayer.height >= platform.y &&
-          prevPlayer.y + prevPlayer.height <= platform.y + 20 &&
-          prevPlayer.x + prevPlayer.width > platform.x &&
-          prevPlayer.x < platform.x + platform.width &&
-          prevPlayer.velocityY >= 0
-        );
-      });
-
-      if (onPlatform) {
-        // Find the platform we're on
-        const platform = currentPlatforms.find((p) => {
-          return (
-            prevPlayer.y + prevPlayer.height >= p.y &&
-            prevPlayer.y + prevPlayer.height <= p.y + 20 &&
-            prevPlayer.x + prevPlayer.width > p.x &&
-            prevPlayer.x < p.x + p.width &&
-            prevPlayer.velocityY >= 0
-          );
-        });
-
-        if (platform) {
-          let jumpMultiplier = 1;
-          if (platform.type === "trampoline") jumpMultiplier = 1.5;
-
-          return {
-            ...prevPlayer,
-            y: platform.y - prevPlayer.height,
-            velocityY: jumpForce * jumpMultiplier,
-          };
-        }
-      }
-
-      // Check if player fell off screen (more strict)
-      if (prevPlayer.y > height + 50) {
-        loseLife();
-        return {
-          ...prevPlayer,
-          y: height - 200,
-          velocityY: 0,
-          x: width / 2 - 25,
-        };
-      }
-
-      return prevPlayer;
-    });
-
-    // Update score based on height (relative to caméra)
-    const currentHeight = cameraY + height - player.y;
-    if (currentHeight > gameState.score) {
-      setGameState((prev) => ({
-        ...prev,
-        score: Math.floor(currentHeight / 10),
-      }));
-    }
+    checkCollisionsWithPlatforms(platforms, player);
   };
 
   const loseLife = () => {
-    setGameState((prev) => {
-      const newLives = prev.lives - 1;
-      if (newLives <= 0) {
-        gameOver();
-        return prev;
-      }
-      return { ...prev, lives: newLives };
-    });
+    gameOver();
   };
 
   const gameOver = () => {
@@ -319,7 +216,7 @@ const DoodleJumpScreen = () => {
       isPaused: false,
     }));
 
-    // Update high score
+    // Mettre à jour le meilleur score
     if (gameState.score > gameState.highScore) {
       setGameState((prev) => ({
         ...prev,
@@ -350,7 +247,7 @@ const DoodleJumpScreen = () => {
       isPaused: false,
       score: 0,
       highScore: gameState.highScore,
-      lives: 3,
+      lives: 1,
       level: 1,
     });
 
@@ -363,59 +260,9 @@ const DoodleJumpScreen = () => {
       height: 50,
     });
 
-    platformIdRef.current = 25; // Réinitialiser après les plateformes initiales
-    lastGeneratedYRef.current = height - 200; // Initialiser la position de dernière génération
-    generateInitialPlatforms();
-  };
-
-  const generateInitialPlatforms = () => {
-    const initialPlatforms: Platform[] = [];
-
-    // Starting platform
-    initialPlatforms.push({
-      id: 0,
-      x: width / 2 - 50,
-      y: height - 150,
-      width: 100,
-      type: "normal",
-    });
-
-    // Generate platforms up the screen
-    for (let i = 1; i < 25; i++) {
-      const platform = generateRandomPlatform(height - 200 - i * 80, i); // Espacement plus naturel
-      initialPlatforms.push(platform);
-    }
-    platformIdRef.current = 25; // Mettre à jour le compteur après la génération initiale
-
-    setPlatforms(initialPlatforms);
-  };
-
-  const generateRandomPlatform = (y: number, currentId: number): Platform => {
-    const types: Platform["type"][] = [
-      "normal",
-      "normal",
-      "normal",
-      "normal", // Encore plus de plateformes normales
-      "moving", // Moins de plateformes mobiles
-      "disappearing",
-      "trampoline",
-    ];
-    const type = types[Math.floor(Math.random() * types.length)];
-
-    const platform: Platform = {
-      id: currentId,
-      x: 20 + Math.random() * (width - 140), // Éviter complètement les bords
-      y,
-      width: 100 + Math.random() * 80, // Largeur plus raisonnable
-      type,
-    };
-
-    if (type === "moving") {
-      platform.movingDirection = Math.random() > 0.5 ? 1 : -1;
-      platform.movingSpeed = 0.05 + Math.random() * 0.1; // Vitesse très lente et plus stable
-    }
-
-    return platform;
+    // Réinitialiser et initialiser les plateformes avec le hook
+    resetPlatforms();
+    initializePlatforms(height - 200, 20);
   };
 
   const handleMove = (direction: number) => {
@@ -467,12 +314,15 @@ const DoodleJumpScreen = () => {
             <Text style={styles.highScoreText}>
               Meilleur: {gameState.highScore}
             </Text>
+            {gameState.isPlaying && (
+              <Text style={styles.debugText}>
+                Plateformes: {getDebugInfo().count} | Y: {Math.floor(player.y)}
+              </Text>
+            )}
           </View>
 
           <View style={styles.livesContainer}>
-            {[...Array(gameState.lives)].map((_, i) => (
-              <Ionicons key={i} name="heart" size={24} color="#EF4444" />
-            ))}
+            <Ionicons name="heart" size={24} color="#EF4444" />
           </View>
 
           {gameState.isPlaying && (
@@ -533,7 +383,7 @@ const DoodleJumpScreen = () => {
                     styles.platform,
                     {
                       left: platform.x,
-                      top: platform.y - cameraY,
+                      top: platform.y - cameraY, // Convertir en coordonnées relatives pour l'affichage
                       width: platform.width,
                       backgroundColor:
                         platform.type === "trampoline"
@@ -625,6 +475,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.8)",
     fontWeight: "500",
+  },
+  debugText: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginTop: 4,
   },
   livesContainer: {
     flexDirection: "row",
@@ -734,4 +589,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default DoodleJumpScreen;
+export default DoodleJumpScreenFixed;
