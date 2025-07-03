@@ -18,7 +18,7 @@ export default function App() {
         style={styles.fullGradient}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>🚀 Doodle Jump</Text>
+          <Text style={styles.title}>🚀 Richnou Jump</Text>
           <Text style={styles.subtitle}>Projet de semaine - React Native</Text>
         </View>
 

@@ -8,11 +8,14 @@ import {
   Animated,
   Alert,
   Image,
+  Modal,
+  Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Animatable from "react-native-animatable";
+import { Audio } from "expo-av";
 import {
   useInfinitePlatformsFinal as useInfinitePlatforms,
   Platform,
@@ -48,6 +51,11 @@ const DoodleJumpScreenFixed = () => {
   const [showControls, setShowControls] = useState(true);
   const [gameStartTime, setGameStartTime] = useState<number | null>(null);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
+  const [backgroundMusic, setBackgroundMusic] = useState<Audio.Sound | null>(
+    null
+  );
+  const [showCredits, setShowCredits] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   // Fonctions pour sauvegarder et charger le meilleur score
   const saveHighScore = async (score: number) => {
@@ -70,6 +78,74 @@ const DoodleJumpScreenFixed = () => {
       }
     } catch (error) {
       console.log("Erreur lors du chargement du meilleur score:", error);
+    }
+  };
+
+  // Fonction pour charger et jouer la musique de fond
+  const loadBackgroundMusic = async () => {
+    try {
+      // Configurer l'audio
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      const { sound } = await Audio.Sound.createAsync(
+        require("../../assets/music.mp3"),
+        {
+          shouldPlay: true,
+          isLooping: true,
+          volume: 0.7,
+          progressUpdateIntervalMillis: 1000,
+        }
+      );
+
+      setBackgroundMusic(sound);
+    } catch (error) {
+      console.log("Erreur lors du chargement de la musique:", error);
+    }
+  };
+
+  // Fonction pour arrêter la musique
+  const stopBackgroundMusic = async () => {
+    if (backgroundMusic) {
+      await backgroundMusic.stopAsync();
+      await backgroundMusic.unloadAsync();
+      setBackgroundMusic(null);
+    }
+  };
+
+  // Fonction pour mute/unmute la musique
+  const toggleMute = async () => {
+    if (backgroundMusic) {
+      if (isMuted) {
+        await backgroundMusic.setVolumeAsync(0.7);
+        setIsMuted(false);
+      } else {
+        await backgroundMusic.setVolumeAsync(0);
+        setIsMuted(true);
+      }
+    }
+  };
+
+  // Fonction pour jouer un effet de saut
+  const playJumpSound = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require("../../assets/retrojump.mp3"),
+        { volume: 0.2 }
+      );
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      // Ignorer l'erreur si le fichier n'existe pas
     }
   };
 
@@ -135,6 +211,13 @@ const DoodleJumpScreenFixed = () => {
   useEffect(() => {
     // Charger le meilleur score au démarrage
     loadHighScore();
+    // Charger et démarrer la musique de fond
+    loadBackgroundMusic();
+
+    // Nettoyer la musique quand le composant se démonte
+    return () => {
+      stopBackgroundMusic();
+    };
   }, []);
 
   useEffect(() => {
@@ -258,6 +341,9 @@ const DoodleJumpScreenFixed = () => {
           if (platform.type === "disappearing") {
             markPlatformAsHit(platform.id);
           }
+
+          // Jouer l'effet sonore de saut
+          playJumpSound();
 
           return {
             ...prevPlayer,
@@ -425,6 +511,9 @@ const DoodleJumpScreenFixed = () => {
     });
 
     if (onPlatform) {
+      // Jouer l'effet sonore de saut
+      playJumpSound();
+
       setPlayer((prev) => ({
         ...prev,
         velocityY: jumpForce,
@@ -456,15 +545,28 @@ const DoodleJumpScreenFixed = () => {
             </Text>
           </View>
 
-          {gameState.isPlaying && (
-            <TouchableOpacity style={styles.pauseButton} onPress={togglePause}>
+          <View style={styles.gameControls}>
+            <TouchableOpacity style={styles.soundButton} onPress={toggleMute}>
               <Ionicons
-                name={gameState.isPaused ? "play" : "pause"}
+                name={isMuted ? "volume-mute" : "volume-high"}
                 size={24}
                 color="white"
               />
             </TouchableOpacity>
-          )}
+
+            {gameState.isPlaying && (
+              <TouchableOpacity
+                style={styles.pauseButton}
+                onPress={togglePause}
+              >
+                <Ionicons
+                  name={gameState.isPaused ? "play" : "pause"}
+                  size={24}
+                  color="white"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Game Area */}
@@ -474,7 +576,7 @@ const DoodleJumpScreenFixed = () => {
             <View style={styles.menuOverlay}>
               <View style={styles.menuContainer}>
                 <Animatable.View animation="bounceIn" delay={200}>
-                  <Text style={styles.gameTitle}>🚀 Doodle Jump</Text>
+                  <Text style={styles.gameTitle}>🚀 Richnou Jump</Text>
                 </Animatable.View>
 
                 <Animatable.View animation="fadeInUp" delay={400}>
@@ -499,6 +601,15 @@ const DoodleJumpScreenFixed = () => {
                     </Text>
                   </Animatable.View>
                 )}
+
+                <Animatable.View animation="fadeInUp" delay={1000}>
+                  <TouchableOpacity
+                    style={styles.creditsButton}
+                    onPress={() => setShowCredits(true)}
+                  >
+                    <Text style={styles.creditsButtonText}>ℹ️ Crédits</Text>
+                  </TouchableOpacity>
+                </Animatable.View>
               </View>
             </View>
           ) : (
@@ -613,6 +724,50 @@ const DoodleJumpScreenFixed = () => {
           )}
         </View>
       </LinearGradient>
+
+      {/* Modal des crédits */}
+      <Modal
+        visible={showCredits}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowCredits(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.creditsModal}>
+            <Text style={styles.creditsTitle}>🎵 Crédits</Text>
+
+            <View style={styles.creditSection}>
+              <Text style={styles.creditSectionTitle}>Musique de fond</Text>
+              <Text style={styles.creditText}>
+                Musique fournie par OpenGameArt.org
+              </Text>
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => Linking.openURL("http://opengameart.org")}
+              >
+                <Text style={styles.linkText}>Visiter OpenGameArt.org</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.creditSection}>
+              <Text style={styles.creditSectionTitle}>Développement</Text>
+              <Text style={styles.creditText}>
+                Richnou Jump - Projet React Native
+              </Text>
+              <Text style={styles.creditText}>
+                Développé avec ❤️ en TypeScript
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowCredits(false)}
+            >
+              <Text style={styles.closeButtonText}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -647,6 +802,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.8)",
     fontWeight: "500",
+  },
+  gameControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  soundButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   pauseButton: {
     width: 44,
@@ -716,6 +884,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontWeight: "600",
   },
+  creditsButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 15,
+    marginTop: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  creditsButtonText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.8)",
+    fontWeight: "500",
+  },
   gameContainer: {
     flex: 1,
     width: "100%",
@@ -773,6 +955,72 @@ const styles = StyleSheet.create({
   touchZone: {
     flex: 1, // Chaque zone prend 50% de l'écran
     height: "100%",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  creditsModal: {
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 20,
+    padding: 30,
+    margin: 20,
+    maxWidth: 350,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  creditsTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#333",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  creditSection: {
+    marginBottom: 20,
+    alignItems: "center",
+  },
+  creditSectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#555",
+    marginBottom: 8,
+  },
+  creditText: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  linkButton: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  linkText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "white",
+  },
+  closeButton: {
+    backgroundColor: "#f093fb",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 15,
+    marginTop: 10,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "white",
   },
 });
 
