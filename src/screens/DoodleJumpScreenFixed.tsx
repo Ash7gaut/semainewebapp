@@ -7,7 +7,9 @@ import {
   Dimensions,
   Animated,
   Alert,
+  Image,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Animatable from "react-native-animatable";
@@ -25,6 +27,9 @@ interface GameState {
   highScore: number;
   lives: number;
   level: number;
+  maxHeight: number; // Hauteur maximale atteinte pendant la partie
+  isSmiling: boolean; // Pour l'animation du sourire
+  trampolineHitCount: number; // Compteur pour alterner sourire/rotation
 }
 
 const DoodleJumpScreenFixed = () => {
@@ -35,7 +40,68 @@ const DoodleJumpScreenFixed = () => {
     highScore: 0,
     lives: 1,
     level: 1,
+    maxHeight: 0,
+    isSmiling: false,
+    trampolineHitCount: 0,
   });
+
+  const [showControls, setShowControls] = useState(true);
+  const [gameStartTime, setGameStartTime] = useState<number | null>(null);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
+
+  // Fonctions pour sauvegarder et charger le meilleur score
+  const saveHighScore = async (score: number) => {
+    try {
+      await AsyncStorage.setItem("highScore", score.toString());
+      console.log("Meilleur score sauvegardé:", score);
+    } catch (error) {
+      console.log("Erreur lors de la sauvegarde du meilleur score:", error);
+    }
+  };
+
+  const loadHighScore = async () => {
+    try {
+      const savedScore = await AsyncStorage.getItem("highScore");
+      console.log("Score chargé depuis le cache:", savedScore);
+      if (savedScore) {
+        const score = parseInt(savedScore);
+        setGameState((prev) => ({ ...prev, highScore: score }));
+        console.log("Meilleur score chargé:", score);
+      }
+    } catch (error) {
+      console.log("Erreur lors du chargement du meilleur score:", error);
+    }
+  };
+
+  // Fonction pour déclencher l'animation du sourire ou de la rotation
+  const triggerTrampolineAnimation = () => {
+    setGameState((prev) => {
+      const newCount = prev.trampolineHitCount + 1;
+      const isEven = newCount % 2 === 0; // Une fois sur deux
+
+      if (isEven) {
+        // Rotation de 360 degrés
+        Animated.timing(playerAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }).start(() => {
+          playerAnim.setValue(0); // Reset pour la prochaine rotation
+        });
+      } else {
+        // Sourire
+        setTimeout(() => {
+          setGameState((current) => ({ ...current, isSmiling: false }));
+        }, 1000);
+      }
+
+      return {
+        ...prev,
+        isSmiling: !isEven, // Sourire seulement si impair
+        trampolineHitCount: newCount,
+      };
+    });
+  };
 
   const [player, setPlayer] = useState({
     x: width / 2 - 25,
@@ -65,6 +131,11 @@ const DoodleJumpScreenFixed = () => {
   const playerAnim = useRef(new Animated.Value(0)).current;
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const backgroundAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Charger le meilleur score au démarrage
+    loadHighScore();
+  }, []);
 
   useEffect(() => {
     if (gameState.isPlaying && !gameState.isPaused) {
@@ -177,7 +248,11 @@ const DoodleJumpScreenFixed = () => {
 
         if (platform) {
           let jumpMultiplier = 1;
-          if (platform.type === "trampoline") jumpMultiplier = 1.5;
+          if (platform.type === "trampoline") {
+            jumpMultiplier = 1.5;
+            // Déclencher l'animation du sourire ou de la rotation pour les plateformes vertes
+            triggerTrampolineAnimation();
+          }
 
           // Marquer les plateformes qui disparaissent comme touchées
           if (platform.type === "disappearing") {
@@ -207,14 +282,21 @@ const DoodleJumpScreenFixed = () => {
       return prevPlayer;
     });
 
-    // Mettre à jour le score basé sur la hauteur
+    // Mettre à jour le score basé sur la hauteur maximale atteinte
     const currentHeight = height - currentPlayer.y;
-    if (currentHeight > gameState.score) {
-      setGameState((prev) => ({
-        ...prev,
-        score: Math.floor(currentHeight / 10),
-      }));
-    }
+    setGameState((prev) => {
+      if (currentHeight > prev.maxHeight) {
+        // Nouvelle hauteur maximale atteinte
+        const newMaxHeight = currentHeight;
+        const newScore = Math.floor(newMaxHeight / 10);
+        return {
+          ...prev,
+          maxHeight: newMaxHeight,
+          score: newScore,
+        };
+      }
+      return prev;
+    });
   };
 
   const checkCollisions = () => {
@@ -226,45 +308,71 @@ const DoodleJumpScreenFixed = () => {
   };
 
   const gameOver = () => {
-    setGameState((prev) => ({
-      ...prev,
-      isPlaying: false,
-      isPaused: false,
-    }));
+    setGameState((prev) => {
+      const currentScore = prev.score;
+      const currentHighScore = prev.highScore;
 
-    // Mettre à jour le meilleur score
-    if (gameState.score > gameState.highScore) {
-      setGameState((prev) => ({
+      // Mettre à jour le meilleur score si nécessaire
+      if (currentScore > currentHighScore) {
+        const newHighScore = currentScore;
+        console.log(
+          "Nouveau meilleur score!",
+          currentScore,
+          ">",
+          currentHighScore
+        );
+        // Sauvegarder le nouveau meilleur score
+        saveHighScore(newHighScore);
+
+        return {
+          ...prev,
+          isPlaying: false,
+          isPaused: false,
+          highScore: newHighScore,
+        };
+      }
+
+      return {
         ...prev,
-        highScore: gameState.score,
-      }));
-    }
+        isPlaying: false,
+        isPaused: false,
+      };
+    });
 
-    Alert.alert(
-      "Game Over!",
-      `Score: ${gameState.score}\nHigh Score: ${Math.max(
-        gameState.score,
-        gameState.highScore
-      )}`,
-      [
-        { text: "Rejouer", onPress: startNewGame },
-        {
-          text: "Menu",
-          onPress: () =>
-            setGameState((prev) => ({ ...prev, isPlaying: false })),
-        },
-      ]
-    );
+    // Afficher l'alerte avec les valeurs actuelles
+    setTimeout(() => {
+      setGameState((prev) => {
+        Alert.alert(
+          "Game Over!",
+          `Score: ${prev.score}\nHigh Score: ${prev.highScore}`,
+          [
+            { text: "Rejouer", onPress: startNewGame },
+            {
+              text: "Menu",
+              onPress: () =>
+                setGameState((current) => ({ ...current, isPlaying: false })),
+            },
+          ]
+        );
+        return prev;
+      });
+    }, 100);
   };
 
   const startNewGame = () => {
-    setGameState({
-      isPlaying: true,
-      isPaused: false,
-      score: 0,
-      highScore: gameState.highScore,
-      lives: 1,
-      level: 1,
+    setGameState((prev) => {
+      console.log("Démarrage nouvelle partie avec high score:", prev.highScore);
+      return {
+        isPlaying: true,
+        isPaused: false,
+        score: 0,
+        highScore: prev.highScore, // Utiliser la valeur actuelle du state
+        lives: 1,
+        level: 1,
+        maxHeight: 0,
+        isSmiling: false,
+        trampolineHitCount: 0,
+      };
     });
 
     setPlayer({
@@ -279,6 +387,22 @@ const DoodleJumpScreenFixed = () => {
     // Réinitialiser et initialiser les plateformes avec le hook
     resetPlatforms();
     initializePlatforms(height - 200, 20);
+
+    // Afficher les contrôles au début et les masquer avec une transition fluide
+    setShowControls(true);
+    setGameStartTime(Date.now());
+    controlsOpacity.setValue(1);
+
+    // Transition d'opacité de 1 à 0 en 2 secondes
+    setTimeout(() => {
+      Animated.timing(controlsOpacity, {
+        toValue: 0,
+        duration: 2000,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowControls(false);
+      });
+    }, 1000);
   };
 
   const handleMove = (direction: number) => {
@@ -330,15 +454,6 @@ const DoodleJumpScreenFixed = () => {
             <Text style={styles.highScoreText}>
               Meilleur: {gameState.highScore}
             </Text>
-            {gameState.isPlaying && (
-              <Text style={styles.debugText}>
-                Plateformes: {getDebugInfo().count} | Y: {Math.floor(player.y)}
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.livesContainer}>
-            <Ionicons name="heart" size={24} color="#EF4444" />
           </View>
 
           {gameState.isPlaying && (
@@ -355,34 +470,36 @@ const DoodleJumpScreenFixed = () => {
         {/* Game Area */}
         <View style={styles.gameArea}>
           {!gameState.isPlaying ? (
-            // Menu principal
-            <View style={styles.menuContainer}>
-              <Animatable.View animation="bounceIn" delay={200}>
-                <Text style={styles.gameTitle}>🚀 Doodle Jump</Text>
-              </Animatable.View>
+            // Menu principal - Positionné au centre de l'écran
+            <View style={styles.menuOverlay}>
+              <View style={styles.menuContainer}>
+                <Animatable.View animation="bounceIn" delay={200}>
+                  <Text style={styles.gameTitle}>🚀 Doodle Jump</Text>
+                </Animatable.View>
 
-              <Animatable.View animation="fadeInUp" delay={400}>
-                <Text style={styles.gameSubtitle}>
-                  Sautez de plateforme en plateforme !
-                </Text>
-              </Animatable.View>
-
-              <Animatable.View animation="fadeInUp" delay={600}>
-                <TouchableOpacity
-                  style={styles.startButton}
-                  onPress={startNewGame}
-                >
-                  <Text style={styles.startButtonText}>🎮 Commencer</Text>
-                </TouchableOpacity>
-              </Animatable.View>
-
-              {gameState.highScore > 0 && (
-                <Animatable.View animation="fadeInUp" delay={800}>
-                  <Text style={styles.highScoreDisplay}>
-                    Meilleur score: {gameState.highScore}
+                <Animatable.View animation="fadeInUp" delay={400}>
+                  <Text style={styles.gameSubtitle}>
+                    Sautez de plateforme en plateforme !
                   </Text>
                 </Animatable.View>
-              )}
+
+                <Animatable.View animation="fadeInUp" delay={600}>
+                  <TouchableOpacity
+                    style={styles.startButton}
+                    onPress={startNewGame}
+                  >
+                    <Text style={styles.startButtonText}>🎮 Commencer</Text>
+                  </TouchableOpacity>
+                </Animatable.View>
+
+                {gameState.highScore > 0 && (
+                  <Animatable.View animation="fadeInUp" delay={800}>
+                    <Text style={styles.highScoreDisplay}>
+                      Meilleur score: {gameState.highScore}
+                    </Text>
+                  </Animatable.View>
+                )}
+              </View>
             </View>
           ) : (
             // Zone de jeu
@@ -440,27 +557,58 @@ const DoodleJumpScreenFixed = () => {
                   },
                 ]}
               >
-                <Text style={styles.playerEmoji}>👾</Text>
+                <Image
+                  source={
+                    gameState.isSmiling
+                      ? require("../../assets/richnou_sourire3.png")
+                      : require("../../assets/richnou.png")
+                  }
+                  style={styles.playerImage}
+                  resizeMode="contain"
+                />
               </Animated.View>
 
-              {/* Contrôles */}
-              <View style={styles.controls}>
+              {/* Contrôles tactiles invisibles */}
+              <View style={styles.touchControls}>
+                {/* Zone gauche (50% de l'écran) */}
                 <TouchableOpacity
-                  style={styles.controlButton}
+                  style={styles.touchZone}
                   onPressIn={() => handleMove(-1)}
                   onPressOut={() => handleMove(0)}
-                >
-                  <Ionicons name="arrow-back" size={32} color="white" />
-                </TouchableOpacity>
+                  activeOpacity={0.1}
+                />
 
+                {/* Zone droite (50% de l'écran) */}
                 <TouchableOpacity
-                  style={styles.controlButton}
+                  style={styles.touchZone}
                   onPressIn={() => handleMove(1)}
                   onPressOut={() => handleMove(0)}
-                >
-                  <Ionicons name="arrow-forward" size={32} color="white" />
-                </TouchableOpacity>
+                  activeOpacity={0.1}
+                />
               </View>
+
+              {/* Contrôles visuels avec transition d'opacité */}
+              {showControls && (
+                <Animated.View
+                  style={[styles.controls, { opacity: controlsOpacity }]}
+                >
+                  <TouchableOpacity
+                    style={styles.controlButton}
+                    onPressIn={() => handleMove(-1)}
+                    onPressOut={() => handleMove(0)}
+                  >
+                    <Ionicons name="arrow-back" size={48} color="white" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.controlButton}
+                    onPressIn={() => handleMove(1)}
+                    onPressOut={() => handleMove(0)}
+                  >
+                    <Ionicons name="arrow-forward" size={48} color="white" />
+                  </TouchableOpacity>
+                </Animated.View>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -500,15 +648,6 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.8)",
     fontWeight: "500",
   },
-  debugText: {
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.7)",
-    marginTop: 4,
-  },
-  livesContainer: {
-    flexDirection: "row",
-    gap: 8,
-  },
   pauseButton: {
     width: 44,
     height: 44,
@@ -522,6 +661,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  menuOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
   menuContainer: {
     alignItems: "center",
     paddingHorizontal: 40,
@@ -531,7 +680,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "white",
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: 50,
     textShadowColor: "rgba(0, 0, 0, 0.3)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
@@ -589,6 +738,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  playerImage: {
+    width: 70,
+    height: 70,
+  },
   playerEmoji: {
     fontSize: 40,
   },
@@ -602,14 +755,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   controlButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+  touchControls: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+  },
+  touchZone: {
+    flex: 1, // Chaque zone prend 50% de l'écran
+    height: "100%",
   },
 });
 
