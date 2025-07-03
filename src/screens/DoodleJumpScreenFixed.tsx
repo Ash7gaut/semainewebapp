@@ -53,11 +53,12 @@ const DoodleJumpScreenFixed = () => {
     initializePlatforms,
     reset: resetPlatforms,
     getDebugInfo,
+    markPlatformAsHit,
   } = useInfinitePlatforms();
 
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
-  const gravity = 0.8;
-  const jumpForce = -15;
+  const gravity = 0.5; // Réduit de 0.8 à 0.5 pour un saut plus lent (chute plus lente)
+  const jumpForce = -15; // Remis à la hauteur originale
   const moveSpeed = 5;
 
   // Animations
@@ -144,6 +145,15 @@ const DoodleJumpScreenFixed = () => {
     setPlayer((prevPlayer) => {
       // Vérifier les collisions avec les plateformes (en coordonnées absolues)
       const onPlatform = currentPlatforms.some((platform) => {
+        // Ignorer les plateformes qui ont disparu
+        if (
+          platform.type === "disappearing" &&
+          platform.hitCount &&
+          platform.hitCount >= 2
+        ) {
+          return false;
+        }
+
         return (
           currentPlayer.y + currentPlayer.height >= platform.y &&
           currentPlayer.y + currentPlayer.height <= platform.y + 20 &&
@@ -169,6 +179,11 @@ const DoodleJumpScreenFixed = () => {
           let jumpMultiplier = 1;
           if (platform.type === "trampoline") jumpMultiplier = 1.5;
 
+          // Marquer les plateformes qui disparaissent comme touchées
+          if (platform.type === "disappearing") {
+            markPlatformAsHit(platform.id);
+          }
+
           return {
             ...prevPlayer,
             y: platform.y - currentPlayer.height,
@@ -177,8 +192,9 @@ const DoodleJumpScreenFixed = () => {
         }
       }
 
-      // Vérifier si le joueur est tombé
-      if (currentPlayer.y > height + 50) {
+      // Vérifier si le joueur est tombé (mort plus rapide)
+      if (currentPlayer.y > height + 20) {
+        // Réduit de +50 à +20 pixels
         loseLife();
         return {
           ...prevPlayer,
@@ -376,27 +392,35 @@ const DoodleJumpScreenFixed = () => {
               onPress={handleJump}
             >
               {/* Plateformes */}
-              {platforms.map((platform) => (
-                <View
-                  key={platform.id}
-                  style={[
-                    styles.platform,
-                    {
-                      left: platform.x,
-                      top: platform.y - cameraY, // Convertir en coordonnées relatives pour l'affichage
-                      width: platform.width,
-                      backgroundColor:
-                        platform.type === "trampoline"
-                          ? "#10B981"
-                          : platform.type === "moving"
-                          ? "#F59E0B"
-                          : platform.type === "disappearing"
-                          ? "#EF4444"
-                          : "#667eea",
-                    },
-                  ]}
-                />
-              ))}
+              {(() => {
+                return null;
+              })()}
+              {platforms.map((platform) => {
+                const displayY = platform.y - cameraY;
+                return (
+                  <View
+                    key={platform.id}
+                    style={[
+                      styles.platform,
+                      {
+                        left: platform.x,
+                        top: displayY, // Convertir en coordonnées relatives pour l'affichage
+                        width: platform.width,
+                        backgroundColor:
+                          platform.type === "trampoline"
+                            ? "#10B981"
+                            : platform.type === "moving"
+                            ? "#F59E0B"
+                            : platform.type === "disappearing"
+                            ? "#EF4444"
+                            : "#667eea",
+                        opacity:
+                          platform.opacity !== undefined ? platform.opacity : 1, // Utiliser l'opacité si définie
+                      },
+                    ]}
+                  />
+                );
+              })}
 
               {/* Joueur */}
               <Animated.View

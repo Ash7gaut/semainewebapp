@@ -12,6 +12,8 @@ export interface Platform {
   movingDirection?: number;
   movingSpeed?: number;
   disappearing?: boolean;
+  hitCount?: number; // Nombre de fois que la plateforme a été touchée
+  opacity?: number; // Opacité de la plateforme (pour l'effet visuel)
 }
 
 export const useInfinitePlatformsFinal = () => {
@@ -36,13 +38,13 @@ export const useInfinitePlatformsFinal = () => {
 
     if (type === "moving") {
       platform.movingDirection = Math.random() > 0.5 ? 1 : -1;
-      platform.movingSpeed = 0.05 + Math.random() * 0.1;
+      platform.movingSpeed = 0.2 + Math.random() * 0.3; // Augmenté de 0.05-0.15 à 0.2-0.5
     }
 
     return platform;
   }, []);
 
-  // Fonction de génération infinie simplifiée
+  // Système de nettoyage simplifié et robuste
   const updatePlatforms = useCallback((playerY: number, updateMovingPlatforms?: (platforms: Platform[]) => Platform[]) => {
     setPlatforms(prevPlatforms => {
       let currentPlatforms = [...prevPlatforms];
@@ -52,17 +54,19 @@ export const useInfinitePlatformsFinal = () => {
         currentPlatforms = updateMovingPlatforms(currentPlatforms);
       }
 
-      // 2. Supprimer les plateformes complètement en dessous de l'écran
-      const cleanupThreshold = playerY - height; // Seuil de nettoyage plus conservateur
-      currentPlatforms = currentPlatforms.filter(platform => platform.y > cleanupThreshold);
+      // 2. NETTOYAGE SIMPLIFIÉ : Garder seulement les plateformes proches du joueur
+      const keepRange = 650; // Réduit à 200 pixels pour très peu de plateformes
+      currentPlatforms = currentPlatforms.filter(platform => 
+        platform.y >= playerY - keepRange && platform.y <= playerY + keepRange
+      );
 
       // 3. Trouver la plateforme la plus haute
       const highestY = currentPlatforms.length > 0 
         ? Math.min(...currentPlatforms.map(p => p.y))
         : playerY;
 
-      // 4. Générer des plateformes au-dessus du joueur
-      const spacing = 80;
+      // 4. Générer des plateformes au-dessus du joueur avec plus d'espacement
+      const spacing = 150; // Augmenté de 80 à 150 pixels pour plus d'espacement
       const newPlatforms: Platform[] = [];
       
       let currentY = highestY - spacing;
@@ -73,7 +77,9 @@ export const useInfinitePlatformsFinal = () => {
         const existing = currentPlatforms.find(p => Math.abs(p.y - currentY) < spacing / 2);
         
         if (!existing) {
-          newPlatforms.push(generatePlatform(currentY));
+          // Ajouter de l'aléatoire pour éviter des patterns trop réguliers
+          const randomOffset = (Math.random() - 0.5) * 50; // ±25 pixels d'aléatoire
+          newPlatforms.push(generatePlatform(currentY + randomOffset));
         }
         
         currentY -= spacing;
@@ -98,7 +104,7 @@ export const useInfinitePlatformsFinal = () => {
 
     // Générer les plateformes initiales
     for (let i = 1; i < count; i++) {
-      initialPlatforms.push(generatePlatform(startY - i * 80));
+      initialPlatforms.push(generatePlatform(startY - i * 150));
     }
 
     idCounterRef.current = count;
@@ -127,11 +133,32 @@ export const useInfinitePlatformsFinal = () => {
     };
   }, [platforms]);
 
+  // Marquer une plateforme comme touchée (pour les plateformes qui disparaissent)
+  const markPlatformAsHit = useCallback((platformId: string) => {
+    setPlatforms(prevPlatforms => 
+      prevPlatforms.map(platform => {
+        if (platform.id === platformId && platform.type === "disappearing") {
+          const newHitCount = (platform.hitCount || 0) + 1;
+          const newOpacity = newHitCount === 1 ? 0.5 : 0; // 50% après premier saut, invisible après deuxième
+          
+          return {
+            ...platform,
+            hitCount: newHitCount,
+            opacity: newOpacity,
+            disappearing: newHitCount >= 2, // Marquer comme disparue après 2 sauts
+          };
+        }
+        return platform;
+      })
+    );
+  }, []);
+
   return {
     platforms,
     updatePlatforms,
     initializePlatforms,
     reset,
     getDebugInfo,
+    markPlatformAsHit,
   };
 }; 
