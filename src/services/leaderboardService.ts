@@ -67,8 +67,11 @@ export const updateScore = async (username: string, score: number): Promise<void
         })
         .eq('username', username);
 
-      if (updateError) throw updateError;
-      console.log(`Score mis à jour pour ${username}: ${score} (ancien: ${currentEntry.score})`);
+      if (updateError) {
+        throw updateError;
+      }
+      
+      console.log(`🏆 Nouveau record ! Score mis à jour pour ${username}: ${score} (ancien: ${currentEntry.score})`);
     } else {
       console.log(`Score non mis à jour pour ${username}: ${score} <= ${currentEntry.score}`);
     }
