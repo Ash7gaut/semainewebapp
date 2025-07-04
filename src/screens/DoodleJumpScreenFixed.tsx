@@ -449,20 +449,21 @@ const DoodleJumpScreenFixed: React.FC<DoodleJumpScreenFixedProps> = ({
       // Sauvegarder le score immédiatement
       if (username && scoreToSave > 0) {
         console.log("Sauvegarde immédiate du score:", scoreToSave);
-        updateScore(username, scoreToSave)
+        updateScore(username, scoreToSave, true) // Force update pour corriger le problème de synchronisation
           .then(async () => {
             console.log("Score sauvegardé avec succès");
             // Mettre à jour le high score localement avec le score qu'on vient de sauvegarder
-            // au lieu de recharger depuis la base de données
-            const newHighScore = Math.max(prev.highScore, scoreToSave);
-            setGameState((current) => ({
-              ...current,
-              highScore: newHighScore,
-            }));
-            console.log("High score mis à jour localement:", newHighScore);
+            setGameState((current) => {
+              const newHighScore = Math.max(current.highScore, scoreToSave);
+              console.log(
+                `High score mis à jour: ${current.highScore} -> ${newHighScore}`
+              );
+              return { ...current, highScore: newHighScore };
+            });
           })
           .catch((error) => {
             console.error("Erreur lors de la sauvegarde:", error);
+            // En cas d'erreur, ne pas mettre à jour le high score local
           });
       }
 

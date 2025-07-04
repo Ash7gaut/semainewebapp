@@ -40,7 +40,7 @@ export const createLeaderboardEntry = async (username: string): Promise<void> =>
 };
 
 // Mettre à jour le score d'un utilisateur (seulement si le nouveau score est plus élevé)
-export const updateScore = async (username: string, score: number): Promise<void> => {
+export const updateScore = async (username: string, score: number, forceUpdate: boolean = false): Promise<void> => {
   try {
     // Vérifier le score actuel
     const { data: currentEntry, error: selectError } = await supabase
@@ -57,8 +57,8 @@ export const updateScore = async (username: string, score: number): Promise<void
       throw new Error(`Aucune entrée leaderboard trouvée pour ${username}`);
     }
 
-    // Mettre à jour seulement si le nouveau score est plus élevé
-    if (score > currentEntry.score) {
+    // Mettre à jour si le nouveau score est plus élevé OU si forceUpdate est true
+    if (score > currentEntry.score || forceUpdate) {
       const { error: updateError } = await supabase
         .from('leaderboard')
         .update({ 
@@ -71,7 +71,11 @@ export const updateScore = async (username: string, score: number): Promise<void
         throw updateError;
       }
       
-      console.log(`🏆 Nouveau record ! Score mis à jour pour ${username}: ${score} (ancien: ${currentEntry.score})`);
+      if (score > currentEntry.score) {
+        console.log(`🏆 Nouveau record ! Score mis à jour pour ${username}: ${score} (ancien: ${currentEntry.score})`);
+      } else {
+        console.log(`Score forcé mis à jour pour ${username}: ${score} (ancien: ${currentEntry.score})`);
+      }
     } else {
       console.log(`Score non mis à jour pour ${username}: ${score} <= ${currentEntry.score}`);
     }
@@ -95,18 +99,32 @@ export const getTopScores = async (limit: number = 10): Promise<LeaderboardEntry
 
 // Récupérer le meilleur score d'un utilisateur
 export const getUserBestScore = async (username: string): Promise<number> => {
-  const { data, error } = await supabase
-    .from('leaderboard')
-    .select('score')
-    .eq('username', username)
-    .single();
+  try {
+    console.log(`=== DÉBOGAGE GET USER BEST SCORE ===`);
+    console.log(`Recherche du score pour: ${username}`);
+    
+    const { data, error } = await supabase
+      .from('leaderboard')
+      .select('score')
+      .eq('username', username)
+      .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return 0; // Aucun score trouvé
+    if (error) {
+      console.error(`Erreur lors de la récupération du score:`, error);
+      if (error.code === 'PGRST116') {
+        console.log(`Aucun score trouvé pour ${username}, retourne 0`);
+        return 0; // Aucun score trouvé
+      }
+      throw error;
     }
+
+    console.log(`Score trouvé en BDD:`, data);
+    console.log(`Score retourné: ${data?.score || 0}`);
+    console.log(`=== FIN DÉBOGAGE ===`);
+    
+    return data?.score || 0;
+  } catch (error) {
+    console.error('Erreur dans getUserBestScore:', error);
     throw error;
   }
-
-  return data?.score || 0;
 }; 
