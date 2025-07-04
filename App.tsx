@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View, Text, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import DoodleJumpScreen from "./src/screens/DoodleJumpScreenFixed";
+import MainGameScreen from "./src/screens/MainGameScreen";
 
 const { width, height } = Dimensions.get("window");
 
@@ -23,7 +23,7 @@ export default function App() {
         </View>
 
         <View style={styles.content}>
-          <DoodleJumpScreen />
+          <MainGameScreen />
         </View>
       </LinearGradient>
     </View>

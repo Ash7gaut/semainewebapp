@@ -38,7 +38,7 @@ export const useInfinitePlatformsFinal = () => {
 
     if (type === "moving") {
       platform.movingDirection = Math.random() > 0.5 ? 1 : -1;
-      platform.movingSpeed = 0.2 + Math.random() * 0.3; // Augmenté de 0.05-0.15 à 0.2-0.5
+      platform.movingSpeed = 0.6 + Math.random() * 0.3; // Augmenté de 0.05-0.15 à 0.2-0.5
     }
 
     return platform;

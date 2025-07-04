@@ -20,6 +20,8 @@ import {
   useInfinitePlatformsFinal as useInfinitePlatforms,
   Platform,
 } from "../hooks/useInfinitePlatformsFinal";
+import { updateScore, getUserBestScore } from "../services/leaderboardService";
+import { useUsername } from "../hooks/useUsername";
 
 const { width, height } = Dimensions.get("window");
 
@@ -33,9 +35,18 @@ interface GameState {
   maxHeight: number; // Hauteur maximale atteinte pendant la partie
   isSmiling: boolean; // Pour l'animation du sourire
   trampolineHitCount: number; // Compteur pour alterner sourire/rotation
+  highestY: number; // Position Y la plus haute atteinte par le joueur
 }
 
-const DoodleJumpScreenFixed = () => {
+interface DoodleJumpScreenFixedProps {
+  onShowLeaderboard: () => void;
+  onShowSettings: () => void;
+}
+
+const DoodleJumpScreenFixed: React.FC<DoodleJumpScreenFixedProps> = ({
+  onShowLeaderboard,
+  onShowSettings,
+}) => {
   const [gameState, setGameState] = useState<GameState>({
     isPlaying: false,
     isPaused: false,
@@ -46,6 +57,7 @@ const DoodleJumpScreenFixed = () => {
     maxHeight: 0,
     isSmiling: false,
     trampolineHitCount: 0,
+    highestY: height - 200, // Position initiale du joueur
   });
 
   const [showControls, setShowControls] = useState(true);
@@ -56,30 +68,43 @@ const DoodleJumpScreenFixed = () => {
   );
   const [showCredits, setShowCredits] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const { username } = useUsername();
 
-  // Fonctions pour sauvegarder et charger le meilleur score
-  const saveHighScore = async (score: number) => {
-    try {
-      await AsyncStorage.setItem("highScore", score.toString());
-      console.log("Meilleur score sauvegardé:", score);
-    } catch (error) {
-      console.log("Erreur lors de la sauvegarde du meilleur score:", error);
-    }
-  };
+  // Variable globale pour stocker le score final
+  const finalScoreRef = useRef(0);
+  // Variable pour capturer le score maximum atteint pendant la partie
+  const maxScoreRef = useRef(0);
 
-  const loadHighScore = async () => {
-    try {
-      const savedScore = await AsyncStorage.getItem("highScore");
-      console.log("Score chargé depuis le cache:", savedScore);
-      if (savedScore) {
-        const score = parseInt(savedScore);
-        setGameState((prev) => ({ ...prev, highScore: score }));
-        console.log("Meilleur score chargé:", score);
+  // Nettoyer l'ancien cache et charger le highscore depuis Supabase
+  useEffect(() => {
+    const cleanupOldCache = async () => {
+      try {
+        // Supprimer l'ancien highscore du cache
+        await AsyncStorage.removeItem("highScore");
+        console.log("Ancien cache highscore supprimé");
+      } catch (error) {
+        console.log("Erreur lors du nettoyage du cache:", error);
       }
-    } catch (error) {
-      console.log("Erreur lors du chargement du meilleur score:", error);
-    }
-  };
+    };
+
+    cleanupOldCache();
+  }, []);
+
+  // Charger le highscore depuis Supabase au démarrage et quand le username change
+  useEffect(() => {
+    const fetchHighScore = async () => {
+      if (username) {
+        try {
+          const best = await getUserBestScore(username);
+          setGameState((prev) => ({ ...prev, highScore: best }));
+          console.log("Highscore chargé depuis Supabase:", best);
+        } catch (error) {
+          console.error("Erreur lors du chargement du highscore:", error);
+        }
+      }
+    };
+    fetchHighScore();
+  }, [username]);
 
   // Fonction pour charger et jouer la musique de fond
   const loadBackgroundMusic = async () => {
@@ -209,8 +234,6 @@ const DoodleJumpScreenFixed = () => {
   const backgroundAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Charger le meilleur score au démarrage
-    loadHighScore();
     // Charger et démarrer la musique de fond
     loadBackgroundMusic();
 
@@ -260,6 +283,30 @@ const DoodleJumpScreenFixed = () => {
         velocityY: newVelocityY,
       };
 
+      // Mettre à jour le score basé sur la hauteur maximale atteinte
+      const currentHeight = height - newY;
+      setGameState((prev) => {
+        // Vérifier si on a atteint une nouvelle hauteur maximale
+        if (currentHeight > prev.maxHeight) {
+          const newMaxHeight = currentHeight;
+          const newScore = Math.floor(newMaxHeight / 10);
+          console.log("Nouveau score atteint:", {
+            currentHeight,
+            newMaxHeight,
+            newScore,
+          });
+          // Mettre à jour la référence du score maximum
+          maxScoreRef.current = newScore;
+          return {
+            ...prev,
+            maxHeight: newMaxHeight,
+            score: newScore,
+          };
+        }
+        // Le score ne change pas si on n'a pas atteint une nouvelle hauteur
+        return prev;
+      });
+
       // Mettre à jour les plateformes avec la nouvelle position du joueur
       updatePlatforms(newY, (currentPlatforms) => {
         // Mettre à jour les plateformes mobiles
@@ -296,6 +343,14 @@ const DoodleJumpScreenFixed = () => {
     currentPlatforms: any[],
     currentPlayer: any
   ) => {
+    // Mettre à jour highestY si le joueur monte au-dessus de sa position la plus haute
+    if (currentPlayer.y < gameState.highestY) {
+      setGameState((prev) => ({
+        ...prev,
+        highestY: currentPlayer.y,
+      }));
+    }
+
     setPlayer((prevPlayer) => {
       // Vérifier les collisions avec les plateformes (en coordonnées absolues)
       const onPlatform = currentPlatforms.some((platform) => {
@@ -353,9 +408,17 @@ const DoodleJumpScreenFixed = () => {
         }
       }
 
-      // Vérifier si le joueur est tombé (mort plus rapide)
-      if (currentPlayer.y > height + 20) {
-        // Réduit de +50 à +20 pixels
+      // Vérifier si le joueur est tombé trop bas par rapport à sa position la plus haute
+      const fallDistance = currentPlayer.y - gameState.highestY;
+      if (fallDistance > 100) {
+        // Le joueur meurt s'il tombe de plus de 100 pixels
+        // Capturer le score AVANT de mourir en utilisant maxScoreRef
+        const finalScore = maxScoreRef.current;
+        finalScoreRef.current = finalScore;
+        console.log("=== MORT DÉTECTÉE ===");
+        console.log("MaxScoreRef:", maxScoreRef.current);
+        console.log("Score final calculé:", finalScore);
+
         loseLife();
         return {
           ...prevPlayer,
@@ -367,22 +430,6 @@ const DoodleJumpScreenFixed = () => {
 
       return prevPlayer;
     });
-
-    // Mettre à jour le score basé sur la hauteur maximale atteinte
-    const currentHeight = height - currentPlayer.y;
-    setGameState((prev) => {
-      if (currentHeight > prev.maxHeight) {
-        // Nouvelle hauteur maximale atteinte
-        const newMaxHeight = currentHeight;
-        const newScore = Math.floor(newMaxHeight / 10);
-        return {
-          ...prev,
-          maxHeight: newMaxHeight,
-          score: newScore,
-        };
-      }
-      return prev;
-    });
   };
 
   const checkCollisions = () => {
@@ -390,32 +437,33 @@ const DoodleJumpScreenFixed = () => {
   };
 
   const loseLife = () => {
-    gameOver();
-  };
+    // Utiliser le score stocké dans la référence
+    const scoreToSave = finalScoreRef.current;
 
-  const gameOver = () => {
+    console.log("=== MORT DU JOUEUR ===");
+    console.log("Score à sauvegarder:", scoreToSave);
+    console.log("Username:", username);
+
+    // Arrêter le jeu immédiatement et sauvegarder le score
     setGameState((prev) => {
-      const currentScore = prev.score;
-      const currentHighScore = prev.highScore;
-
-      // Mettre à jour le meilleur score si nécessaire
-      if (currentScore > currentHighScore) {
-        const newHighScore = currentScore;
-        console.log(
-          "Nouveau meilleur score!",
-          currentScore,
-          ">",
-          currentHighScore
-        );
-        // Sauvegarder le nouveau meilleur score
-        saveHighScore(newHighScore);
-
-        return {
-          ...prev,
-          isPlaying: false,
-          isPaused: false,
-          highScore: newHighScore,
-        };
+      // Sauvegarder le score immédiatement
+      if (username && scoreToSave > 0) {
+        console.log("Sauvegarde immédiate du score:", scoreToSave);
+        updateScore(username, scoreToSave)
+          .then(async () => {
+            console.log("Score sauvegardé avec succès");
+            // Mettre à jour le high score localement avec le score qu'on vient de sauvegarder
+            // au lieu de recharger depuis la base de données
+            const newHighScore = Math.max(prev.highScore, scoreToSave);
+            setGameState((current) => ({
+              ...current,
+              highScore: newHighScore,
+            }));
+            console.log("High score mis à jour localement:", newHighScore);
+          })
+          .catch((error) => {
+            console.error("Erreur lors de la sauvegarde:", error);
+          });
       }
 
       return {
@@ -425,39 +473,44 @@ const DoodleJumpScreenFixed = () => {
       };
     });
 
-    // Afficher l'alerte avec les valeurs actuelles
+    // Afficher l'alerte après un court délai
     setTimeout(() => {
-      setGameState((prev) => {
-        Alert.alert(
-          "Game Over!",
-          `Score: ${prev.score}\nHigh Score: ${prev.highScore}`,
-          [
-            { text: "Rejouer", onPress: startNewGame },
-            {
-              text: "Menu",
-              onPress: () =>
-                setGameState((current) => ({ ...current, isPlaying: false })),
-            },
-          ]
-        );
-        return prev;
-      });
+      // Calculer le nouveau high score localement
+      const newHighScore = Math.max(gameState.highScore, scoreToSave);
+      Alert.alert(
+        "Game Over!",
+        `Score: ${scoreToSave}\nHigh Score: ${newHighScore}`,
+        [
+          { text: "Rejouer", onPress: startNewGame },
+          {
+            text: "Menu",
+            onPress: () =>
+              setGameState((current) => ({ ...current, isPlaying: false })),
+          },
+        ]
+      );
     }, 100);
   };
 
   const startNewGame = () => {
+    // Réinitialiser la référence du score final
+    finalScoreRef.current = 0;
+    // Réinitialiser la référence du score maximum
+    maxScoreRef.current = 0;
+
     setGameState((prev) => {
       console.log("Démarrage nouvelle partie avec high score:", prev.highScore);
       return {
         isPlaying: true,
         isPaused: false,
-        score: 0,
+        score: 0, // Remettre le score à 0 pour la nouvelle partie
         highScore: prev.highScore, // Utiliser la valeur actuelle du state
         lives: 1,
         level: 1,
-        maxHeight: 0,
+        maxHeight: 0, // Remettre la hauteur maximale à 0
         isSmiling: false,
         trampolineHitCount: 0,
+        highestY: height - 200, // Position initiale du joueur
       };
     });
 
@@ -539,7 +592,9 @@ const DoodleJumpScreenFixed = () => {
         {/* Game UI */}
         <View style={styles.gameUI}>
           <View style={styles.scoreContainer}>
-            <Text style={styles.scoreText}>Score: {gameState.score}</Text>
+            <Text style={styles.scoreText}>
+              Score: {Math.floor(gameState.maxHeight / 10)}
+            </Text>
             <Text style={styles.highScoreText}>
               Meilleur: {gameState.highScore}
             </Text>
@@ -603,6 +658,24 @@ const DoodleJumpScreenFixed = () => {
                 )}
 
                 <Animatable.View animation="fadeInUp" delay={1000}>
+                  <TouchableOpacity
+                    style={styles.creditsButton}
+                    onPress={onShowLeaderboard}
+                  >
+                    <Text style={styles.creditsButtonText}>🏆 Leaderboard</Text>
+                  </TouchableOpacity>
+                </Animatable.View>
+
+                <Animatable.View animation="fadeInUp" delay={1200}>
+                  <TouchableOpacity
+                    style={styles.creditsButton}
+                    onPress={onShowSettings}
+                  >
+                    <Text style={styles.creditsButtonText}>⚙️ Paramètres</Text>
+                  </TouchableOpacity>
+                </Animatable.View>
+
+                <Animatable.View animation="fadeInUp" delay={1400}>
                   <TouchableOpacity
                     style={styles.creditsButton}
                     onPress={() => setShowCredits(true)}
